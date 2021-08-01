@@ -1,3 +1,10 @@
+# Project specific
+conf.cfg
+archive.py
+etl2.py
+etl3.py
+etl4.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
