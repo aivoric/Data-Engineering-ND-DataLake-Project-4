@@ -4,6 +4,9 @@ archive.py
 etl2.py
 etl3.py
 etl4.py
+data/
+parquet-processed/
+parquet-raw/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
