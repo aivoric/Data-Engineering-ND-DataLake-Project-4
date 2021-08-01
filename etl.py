@@ -1,6 +1,7 @@
 import os
 import configparser
 import logging
+import boto3
 from schema import log_data_schema, song_data_schema
 from spark_setup import create_spark_session
 import pyspark.sql.functions as F
@@ -13,10 +14,12 @@ class ETL:
         config = configparser.ConfigParser()
         config.read_file(open('conf.cfg'))
 
-        self.KEY         = config.get('AWS', 'key')
-        self.SECRET      = config.get('AWS', 'secret')
+        self.KEY                 = config.get('AWS', 'key')
+        self.SECRET              = config.get('AWS', 'secret')
+        self.REGION              = config.get('AWS', 'region')
         self.LOG_DATA_S3_PATH    = config.get('S3', 'log_data')
         self.SONG_DATA_S3_PATH   = config.get('S3', 'song_data')
+        self.OUTPUT_S3_BUCKET    = config.get('S3', 'output_bucket')
 
         self.spark = create_spark_session(self.KEY, self.SECRET)
         
@@ -28,6 +31,8 @@ class ETL:
         self.user_table_location = os.path.join(os.getcwd(), 'parquet-processed', 'user_table')
         self.songplay_table_location = os.path.join(os.getcwd(), 'parquet-processed', 'songplay_table')
         self.time_table_location = os.path.join(os.getcwd(), 'parquet-processed', 'time_table')
+        
+        self.s3tables = ["song_table", "artist_table", "user_table", "songplay_table", "time_table"]
         
     def s3logs_to_parquet(self):
         df_logs = self.spark.read.option("recursiveFileLookup", "true").json(
@@ -44,7 +49,12 @@ class ETL:
     def create_songs_table(self):
         df_songs = self.spark.read.format("parquet").load(self.song_parquet_location)
         songs_table = df_songs.select(["song_id","title", "artist_id", "year", "duration"]).distinct()
-        self._local_parquet_writer(songs_table, self.song_table_location)
+        
+        songs_table.write.format("parquet")\
+            .partitionBy("year","artist_id")\
+            .mode("overwrite")\
+            .option("compression", "snappy")\
+            .save(self.song_table_location)
         songs_table.show(10)
         
     def create_artists_table(self):
@@ -83,6 +93,8 @@ class ETL:
         songplay_table = self.spark.sql("""
             SELECT
                 logs.ts
+                , EXTRACT(year FROM timestamp 'epoch' + ts/1000 * interval '1 second') AS year
+                , EXTRACT(month FROM timestamp 'epoch' + ts/1000 * interval '1 second') AS month
                 , logs.userId
                 , logs.level
                 , songs.song_id
@@ -94,7 +106,11 @@ class ETL:
             LEFT JOIN songs ON songs.title = logs.song
             WHERE page = 'NextSong'
         """)
-        self._local_parquet_writer(songplay_table, self.songplay_table_location)
+        songplay_table.write.format("parquet")\
+            .partitionBy("year","month")\
+            .mode("overwrite")\
+            .option("compression", "snappy")\
+            .save(self.songplay_table_location)
         songplay_table.show(10)
         
     def create_time_table(self):
@@ -120,7 +136,11 @@ class ETL:
             , "year"
             , (((F.dayofweek("date")+5)%7)+1).alias("weekday")
             ]).distinct()
-        self._local_parquet_writer(time_table_with_weekday, self.time_table_location)
+        time_table_with_weekday.write.format("parquet")\
+            .partitionBy("year","month")\
+            .mode("overwrite")\
+            .option("compression", "snappy")\
+            .save(self.time_table_location)
         time_table_with_weekday.show(10)
 
     def _local_parquet_writer(self, df, save_location):
@@ -128,13 +148,29 @@ class ETL:
             .mode("overwrite")\
             .option("compression", "snappy")\
             .save(save_location)
+            
+    def empty_s3_bucket(self):
+        local_aws_profile = "udacity"
+        os.system(f"aws s3 rm s3://{self.OUTPUT_S3_BUCKET}/ --recursive --profile {local_aws_profile}")
+                            
+    def upload_to_s3_batch(self):
+        local_aws_profile = "udacity"
+        os.system(f"aws s3 cp parquet-processed/ s3://{self.OUTPUT_S3_BUCKET}/ --recursive --profile {local_aws_profile}")     
+        
+    def datalake_read_test(self):
+        for table in self.s3tables:
+            df = self.spark.read.format("parquet").load(f"s3n://{self.OUTPUT_S3_BUCKET}/{table}/")
+            df.show(10)
         
     
 etl = ETL()
-#etl.s3logs_to_parquet()
-#etl.s3songs_to_parquet()
+etl.s3logs_to_parquet()
+etl.s3songs_to_parquet()
 etl.create_songs_table()
 etl.create_artists_table()
 etl.create_user_table()
 etl.create_songplay_table()
 etl.create_time_table()
+etl.empty_s3_bucket()
+etl.upload_to_s3_batch()
+etl.datalake_read_test()
