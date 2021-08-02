@@ -98,8 +98,16 @@ user_table_insert = ("""
 An technical explanation about the above can be found here:
 https://stackoverflow.com/questions/121387/fetch-the-row-which-has-the-max-value-for-a-column
 
+## S3 Output Preview
 
-## Preview of the final output data
+![](output_preview/s3_output.png)
+
+![](output_preview/s3_artists.png)
+
+![](output_preview/s3_songs.png)
+
+
+## Preview of the final output data from the dataframes
 
 
 ![](output_preview/song_table.png)
