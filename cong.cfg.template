@@ -1,0 +1,11 @@
+[AWS]
+key = 
+secret = 
+region = 
+profile = 
+
+[S3]
+log_data = s3n://udacity-dend/log_data/
+song_data = s3n://udacity-dend/song_data/
+output_bucket = 
+

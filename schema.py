@@ -1,3 +1,7 @@
+"""
+Contains the schemas for the log_data and the song_data.
+"""
+
 log_data_schema = """
     `artist` STRING
     , `auth` STRING
